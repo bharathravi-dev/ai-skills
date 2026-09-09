@@ -1,0 +1,24 @@
+# Course-wide Python dependencies.
+# Versions below were actually installed and imported successfully in the course
+# authoring environment on 2026-09-07 with Python 3.12.3.  [EXECUTED]
+#
+# Install:  pip install -r requirements.txt
+# Some modules add extras; those are listed in the module's own requirements file.
+
+# --- Modules 2-3: core language, data, ML ---
+numpy==2.5.3
+scikit-learn==1.9.0
+
+# --- Module 2: validation, APIs, services ---
+pydantic==2.13.5
+fastapi==0.141.1
+uvicorn==0.52.4
+httpx==0.28.1
+python-dotenv==1.2.3
+
+# --- Modules 2-13: testing ---
+pytest==9.1.1
+
+# --- Modules 4-7: tokenisation and lexical search ---
+tiktoken==0.14.0
+rank-bm25==0.2.2

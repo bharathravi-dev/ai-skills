@@ -1,0 +1,15 @@
+# Project 4 dependencies. Verified installed and imported 2026-09-09,
+# Python 3.12.3.  [EXECUTED]
+#
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -e ".[dev]"
+#
+# The src/ layout REQUIRES the editable install (M2-L06).
+#
+# NO API KEY IS NEEDED. The harness ships a deterministic mock provider and
+# runs entirely offline. An optional real-provider adapter is included but is
+# never exercised by the tests and never called unless you supply credentials
+# yourself.
+
+numpy==2.5.3
+pytest==9.1.1

@@ -1,0 +1,25 @@
+[project]
+name = "ticketapi"
+version = "0.1.0"
+description = "Project 2: a validated support-ticket API"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi==0.141.1",
+    "pydantic==2.13.5",
+    "uvicorn==0.52.4",
+    "python-dotenv==1.2.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "httpx==0.28.1"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
