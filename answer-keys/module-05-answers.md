@@ -10,6 +10,22 @@ choice, a reason each distractor fails.
 |---|---|
 | M5-L01 Anatomy of a Prompt | [↓](#m5-l01) |
 | M5-L02 Message Roles | [↓](#m5-l02) |
+| M5-L03 Few-Shot | [↓](#m5-l03) |
+| M5-L04 Decomposition | [↓](#m5-l04) |
+| M5-L05 Delimiters | [↓](#m5-l05) |
+| M5-L06 Structured Output | [↓](#m5-l06) |
+| M5-L07 Validation and Repair | [↓](#m5-l07) |
+| M5-L08 Tools | [↓](#m5-l08) |
+| M5-L09 Streaming | [↓](#m5-l09) |
+| M5-L10 Conversation State | [↓](#m5-l10) |
+| M5-L11 Context Engineering | [↓](#m5-l11) |
+| M5-L12 Prompt Versioning | [↓](#m5-l12) |
+| M5-L13 Prompt Injection | [↓](#m5-l13) |
+| M5-L14 Refusals and Fallback | [↓](#m5-l14) |
+| M5-L15 Token Accounting | [↓](#m5-l15) |
+| M5-L16 Caching and Routing | [↓](#m5-l16) |
+| M5-L17 Provider Portability | [↓](#m5-l17) |
+| M5-L18 Evaluation Dataset | [↓](#m5-l18) |
 
 ---
 
@@ -303,4 +319,313 @@ stream everywhere scores 0.
 
 ---
 
-*Further lessons are added to this key as Module 5 is written.*
+<a id="m5-l10"></a>
+## M5-L10 — Conversation State: What You Store and What You Resend
+
+**Answers: B · C · A · D · B · A · C · D · A · C · D · B**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **B** | Your application resends the prior turns on every request; the model itself retains nothing (M4-L16). **A** and **C** describe server-side persistence no provider gives you by default. **D** confuses fine-tuning, a slow offline process, with a live conversation. |
+| 2 | **C** | About 43× (16,180 / 380 in the lab's table). **A** and **B** understate it by an order of magnitude. **D** would be true only if cost scaled with turn number directly, which it does not — turn 80's *own* message is the same size as turn 1's; only the history dragged behind it grows. |
+| 3 | **A** | Each turn adds a fixed amount to history, and every later turn resends that addition again — so the total is a sum of a growing series, which is quadratic in the turn count. **B** is false in the lab's setup: each message is a fixed size. **C** and **D** invent mechanisms that are not what the table measures. |
+| 4 | **D** | 7.5× smaller, and the smaller version is a summary someone wrote, not a lossless transform — the ratio is both the saving and the omission in one number. **A** ignores that a chosen sentence cannot contain everything the transcript did. **B** overclaims — §5.4 shows exactly the cases where a summary-sized record fails. **C** describes overhead in the wrong direction; the state record is smaller, not larger, than the transcript. |
+| 5 | **B** | A schema bounds what structured state can omit; you know in advance which fields it does not track. A prose summary's omissions depend on what the summarizer happened to judge unimportant on a given run. **A** ignores that difference in predictability, which is the entire point of comparing them. **C** and **D** are not supported by the lab — both scored 7 of 12. |
+| 6 | **A** | The lab's own table: 12 of 12 answered, and simultaneously flagged over the 4,000-token budget — informational completeness and affordability are independent axes. **B** is the belief the table exists to correct. **C** and **D** dodge the trade-off rather than naming it. |
+| 7 | **C** | Store is what your database retains for audit, support and analytics; send is what goes into the next request's context — and §5.6's table shows rows (structured state, summaries) where the answer is "yes" to both and rows (full transcript, tool arguments) where it differs. **A** and **D** collapse a distinction the lesson exists to keep separate. **B** is simply wrong — the two answers frequently diverge for the same row. |
+| 8 | **D** | A summary derived from the deleted message still contains what it summarised, until the summary itself is regenerated or edited. **A** and **C** assume deletion propagates automatically, which it does not without deliberate cascade logic. **B** overstates — deletion absolutely can be honoured; it just has to reach every derived copy, not only the source row. |
+| 9 | **A** | Without a version tag you cannot later reproduce or explain why a stored summary says what it says — the same reproducibility argument M5-L12 makes for prompts generally. **B** invents a provider requirement. **C** confuses versioning with compression. **D** overstates what versioning does — it makes hallucination explicable after the fact, not impossible. |
+| 10 | **C** | 38 times — every turn from turn 3 through turn 40 resends the full history, and turn 3's content is part of that history for all of them. **A** and **D** ignore that full resend means *every* prior turn travels with *every* later request. **B** quotes the conversation-wide average (20.5×), not the specific count for a message sent early. |
+| 11 | **D** | The state was keyed by a ticket number the helpdesk platform reissued, fetched on key match with no check that it belonged to the current customer. **A** blames a hallucination that did not occur — the model reported the record accurately. **B** invents an attacker where the customer did nothing. **C** misattributes the bug to summarisation, which was not in use in this scenario. |
+| 12 | **B** | Key by a stable, verified identity; check ownership on every read; make deletion cascade from one source of truth. **A** treats the symptom (the data format) rather than the cause (no ownership check), and a leaked summary is just as bad as a leaked structured record. **C** discards the feature rather than fixing the bug. **D** is a real control against a different threat (data at rest) and would not have stopped a correctly-authorised lookup at the wrong key. |
+
+**Q13 rubric (5 marks).** One mark each for: **the cost argument** — full-history resend forever grows
+the bill quadratically with conversation length and will eventually exceed the context window outright,
+which "never losing anything" does not prevent, it only delays; **store vs send are separable** — keep
+the full transcript in your database with a retention policy (that *is* "never losing anything," for the
+record that matters) without resending all of it on every request; **naming a strategy** — a sliding
+window, a rolling summary, or structured state, chosen against the actual questions users ask, not
+against a vague fear of forgetting; **the honest trade-off** — any strategy short of full resend loses
+*something*, and the choice should be made deliberately by checking what a workload actually needs (as
+§5.4 does with twelve concrete questions), not avoided by pretending resending everything has no cost;
+and **a boundary case** — sensitive data typed early in a full-resend conversation is retransmitted on
+every later turn regardless of any later redaction, which "keep everything, forever" makes worse, not
+safer. An answer that only says "it's too expensive" scores 2, without a concrete alternative and without
+naming the store/send distinction.
+
+---
+
+<a id="m5-l11"></a>
+## M5-L11 — Context Engineering: Summarization, Truncation, Budgets
+
+**Answers: B · C · D · A · B · D · A · C · D · B · C · A**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **B** | Ten turns is not a fixed amount of text, so "every 10 turns" is a token-count trigger wearing a turn-count disguise — the lab measures an 8× spread between a chatty and a verbose profile under the identical rule. **A** invents a bug where there is a modelling error. **C** is not stated or needed to produce the gap. **D** is the opposite of what the section demonstrates. |
+| 2 | **C** | A cascading pass summarises the previous summary, so a fact must survive every pass since the start to still be present — loss compounds multiplicatively. **A** describes a different resource limit. **B** contradicts the mechanism: passes are not independent, which is exactly why the effect compounds. **D** is not part of the model. |
+| 3 | **D** | Checkpoint-3 read about 5× the tokens cascade did over the same 12 passes, because a checkpoint pass re-reads the growing transcript rather than a short summary. **A** ignores the lab's own cost table. **B** and **C** describe effects the mechanism does not have. |
+| 4 | **A** | Across the three scenarios, document count fell from 10 to 3 before the conversation-state strategy downgraded to structured state — an explicit, decided-in-advance order. **B** and **D** are the components marked never-drop in the same budget. **C** is also never-drop; dropping it would remove the model's ability to answer at all. |
+| 5 | **B** | Refuse, and state both numbers — the same principle M4-L06 established for a system prompt, generalised to the whole fixed set. **A** and **C** are the exact silent-truncation failure the lesson argues against — cutting a component marked never-drop is a worse failure than a declined request. **D** hides the problem instead of surfacing it. |
+| 6 | **D** | A feature's enabled/removed status is a two-valued fact, changed at a specific point, and consequential if wrong — precisely what §5.4 says belongs in structured state. **A**, **B** and **C** are narrative, aggregate impressions with no single "still true or not" value to get wrong. |
+| 7 | **A** | The summarizer, instructed to keep summaries brief, compressed "added, then removed" down to "added" in a single pass — a systematic bias toward the shorter, positive clause, not a multi-pass decay. **B** blames a hallucination that did not occur — the removal genuinely happened. **C** did not occur; the window was never the constraint here. **D** contradicts the scenario as stated. |
+| 8 | **C** | Real failures tend to be systematic — the same clause shape dropped every time — which is worse in one sense (repeatable) and better in another: reading the summarization prompt can find and fix it, unlike a genuinely random loss. **A** overstates and gets the direction wrong. **B** and **D** are not claims the lesson makes. |
+| 9 | **D** | p90 means at least 10% of conversations reach or exceed that length, and 22 turns exceeds the 15-turn trigger point — so at least that 10% fires it. **A** misreads what a percentile is. **B** confuses the maximum with the 90th percentile. **C** inverts the definition of p90. |
+| 10 | **B** | Checkpointing periodically regenerates the summary from source rather than from the last summary, which bounds drift at a measured 3–5× token cost. **A** is false — a checkpoint pass is defined by re-reading source. **C** is not part of the mechanism. **D** is backwards: checkpointing is consistently more expensive than cascading. |
+| 11 | **C** | Any fact whose value is "still true or not" belongs in structured state, because prose compression fails exactly where the negation is. **A** overstates — rolling summaries remain useful for narrative, aggregate content. **B** and **D** are cost-blind absolutes the lesson explicitly argues against; the interval is a dial, not a fixed rule. |
+| 12 | **A** | An explicit priority order, decided in advance and applied consistently, is what makes a budget's behaviour predictable under pressure. **B**, **C** and **D** all describe an order nobody chose on purpose, which is precisely the failure mode M4-L06 and this lesson both warn against. |
+
+**Q13 rubric (5 marks).** One mark each for: **diagnosing before changing anything** — pull the raw
+transcript around the reversal and compare it to what the current summary claims, to confirm this is
+compression drift and not a different bug (a lookup keyed wrong, or the summary simply never being sent);
+**naming the systematic cause** — read the actual summarization prompt for the instruction (commonly
+"keep it brief") that biases compression toward dropping a qualifying or negating clause, as in §6;
+**the structural fix** — move status-type facts ("is this still true") into structured state so they
+cannot be silently reworded, and/or add checkpoint resummarization at a deliberately chosen interval so
+no single compression error survives unchallenged indefinitely; **the prompt fix** — since the failure is
+systematic, rewrite the summarization instruction to preserve reversals and negations verbatim rather
+than compressing them away; and **verifying without waiting six weeks** — replay the real (or a
+reconstructed) historical transcript through the fixed pipeline offline and confirm the reversal now
+survives to the present turn, i.e. a regression test built from the incident itself, not a wait for new
+traffic to reach the same distance. An answer that only proposes "summarise less aggressively" without a
+verification step scores 2.
+
+---
+
+<a id="m5-l12"></a>
+## M5-L12 — Prompt Versioning and Regression Testing
+
+**Answers: A · D · B · C · A · D · B · C · A · D · C · B**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **A** | Template, model, parameters and tool schema together — anything that can change what the model does belongs in the artefact. **B** and **C** each name one field and miss the others §5.1 shows also move behaviour. **D** ties the definition to a review artefact (a git diff) rather than to what actually affects output — precisely the assumption §6's incident shows failing. |
+| 2 | **D** | Exact-match fails every correct answer that happens to be formatted differently from the one stored string, which is why a prompt that is truly right 95% of the time still scored 67%. **A** blames the model for a grading-method artefact. **B** dismisses a number the lab computed from 320 real simulated draws. **C** is not what the scenario describes — the golden set's expected categories were correct; the assertion type was wrong. |
+| 3 | **B** | A property assertion checks a stated rule — "is the category right" — independent of exact wording, which is why it tracked true quality far more closely than exact-match in §7.2. **A** describes exact-match itself. **C** and **D** name concerns this lesson does not test for. |
+| 4 | **C** | 19% false-alarm and 63% catch rate together mean the suite is unreliable in both directions at once — not evidence a gate should act on. **A** is the mistake the section exists to correct. **B** misreads a sampling-noise problem as a threshold-tuning problem. **D** misreads a gate's error rate as the prompt's own regression rate — two different quantities. |
+| 5 | **A** | Measured exactly: false alarms fell to 5%, catch rate rose to 98%, at 10 samples/case. **B** and **C** contradict the lab's own table. **D** is wrong — both numbers moved together as samples increased. |
+| 6 | **D** | The fingerprint payload includes model, temperature, max_tokens and tool schema alongside the template, so it changes even when the template does not. **A** invents nondeterminism in a pure hash function. **B** names a real difference between the two artefacts, but the version *string* is not part of the fingerprint's input — the model and max_tokens fields are what actually move it. **C** overclaims; two artefacts sharing every field would share a fingerprint. |
+| 7 | **B** | A text-diff gate reports nothing when the template is unchanged, so the golden suite never runs — exactly what shipped v3 in §6 unexamined. **A** describes the correct behaviour, which the scenario is built to show failing. **C** and **D** describe actions a text-diff gate, by construction, cannot take, since it never even detects the change. |
+| 8 | **C** | If a field can change the output, it is part of the version — model, parameters and tool schema included, with no "just config" exception. **A** overcorrects into never changing anything. **B** is the exact belief that produced §6's incident. **D** inverts the purpose of a gate, which exists to catch a regression *before* it ships. |
+| 9 | **A** | Rollback means pointing at a previously kept version; output attribution means tagging a result with the version that produced it — both require that version to still exist, not merely be remembered. **B** gets the trade-off backwards; keeping versions costs storage precisely because it buys this. **C** invents a requirement no provider imposes. **D** confuses the fingerprint (a way to detect a change) with the retained artefact itself (what you roll back to). |
+| 10 | **D** | Exact-match is appropriate exactly where byte-identical output is genuinely required, such as a fixed enum value — not where any legitimate variation in wording exists. **A** and **B** are the cases §7.2 shows exact-match handling badly. **C** names an unrelated setting. |
+| 11 | **C** | The lab states its own numbers are illustrative of a method — simulate your own quality gap and threshold, then read off your own samples/case. **A** and **B** overclaim generality the lab explicitly disclaims. **D** is not a limitation the scenario or the method imposes. |
+| 12 | **B** | A tool schema change alters what the model can do just as a wording change does, so it belongs in the same fingerprint and the same gate (M5-L08). **A** and **D** exempt exactly the kind of change §5.1's fingerprint is built to catch. **C** invents a dependency between two independent fields. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming the real risk** — "watch production closely" only
+catches a regression after real users have already been served the worse version, and with no golden
+suite there is no pre-deploy signal and often no fast way to confirm *what* changed once a problem is
+noticed; **the minimum suite** — a small golden set (even 5–10 cases) covering the task's main categories
+or outcomes, checked with property assertions rather than exact-match; **sizing it** — enough samples per
+case that a real regression is more likely to be caught than missed, per §5.3, rather than a single
+untested run; **tying it to the gate** — the suite must actually block or flag a deploy on an artefact
+fingerprint change, not just exist as a script someone can choose to run; and **conceding the trade-off
+honestly** — a minimal suite is cheap and worth insisting on before shipping, even though it will not
+catch everything "watching production" eventually would. An answer that says only "we need tests" without
+sizing them or connecting them to a gate scores 2.
+
+---
+
+<a id="m5-l13"></a>
+## M5-L13 — Prompt Injection: Attack Catalogue and Real Defences
+
+**Answers: A · B · C · D · A · B · C · D · A · B · C · D**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **A** | A payload riding in a retrieved document is indirect injection — it never passed through the user's own message. **B** misapplies the term to content the user did not author. **C** denies the definition given in §2 for the sake of a technicality; injection is defined by mechanism (instruction-shaped content being followed), not by who typed it. **D** confuses an attack category with a detection tool. |
+| 2 | **B** | Keep the filter as one layer, and pair it with controls that do not depend on recognising payload text at all — the lesson's stated conclusion, and the reason §5.6's stack has more than one row. **A** overreacts to a real limitation. **C** ignores that the cheapest bypass measured needed no encoding at all. **D** is false — §7.1's "plain" variant was direct, and the filter caught it fine; the failure was specifically against obfuscated forms. |
+| 3 | **C** | A canary in the output proves the system prompt containing it was disclosed — that is the entire and exact claim it supports. **A** and **B** overreach into claims about future behaviour a single detection cannot support. **D** assumes a specific source the canary's presence does not establish. |
+| 4 | **D** | A discount approval, however it was produced, is text that was never going to contain the canary string — so detection sits at zero regardless of the true compliance rate, which is exactly what the lab measured at 30%, 60% and 90%. **A** dismisses a result the simulation reproduces at every rate tested. **B** confuses "the canary can't see it" with "it is safe." **C** contradicts the table — the 90% row shows the same zero as the 30% row. |
+| 5 | **A** | Keep the filter as one layer and add controls — like action gates — that do not depend on recognising the payload's text at all, since text-based recognition is exactly what obfuscation defeats. **B** discards a real, if partial, layer. **C** repeats Q4's mistake — a canary does not cover this class of harm. **D** is not established anywhere in the lesson; filters are weak against obfuscated forms of *any* category, not indirect specifically. |
+| 6 | **B** | A brevity-tuned summarizer keeps short, confident, unqualified statements best — which is exactly the shape of a typical injected claim, and exactly why the hedge that would flag it as unverified is what gets compressed away first (M5-L11 §6). **A** invents a property injected claims do not have. **C** denies that the lab's chosen parameter is a modelling choice motivated by a real mechanism, not an error. **D** is not a claim the lesson makes or needs. |
+| 7 | **C** | A pipeline that never re-screens its own summary lets a claim resurface as settled fact long after the untrusted content that produced it is gone from any re-screened window — precisely §6's incident. **A** and **B** both overclaim protection the described pipeline does not have. **D** contradicts the entire mechanism §5.4 describes. |
+| 8 | **D** | The exact hostname carried the trusted domain as a genuine substring, which is why exact, parsed-host comparison — not substring containment — is required. **A** overgeneralises into banning a whole class of valid configuration. **B** is not achievable and not what the fix does. **C** is not a distinction the lesson draws; either content type can carry a URL. |
+| 9 | **A** | `"ourcompany.com"` literally appears inside `"support.ourcompany.com.attacker.example"` as a substring, which is exactly why a substring check passes it. **B** is false — the operator works fine; it is simply the wrong check for this purpose. **C** is false; it is a syntactically valid hostname, which is the whole problem. **D** is an unrelated claim about performance, not correctness. |
+| 10 | **B** | Each layer covers a different blind spot, so no single point of failure defeats the whole stack — a canary's blindness to Goal B is covered by an action gate, not by another canary. **A** would leave every layer sharing one blind spot. **C** is not a claim the lesson makes. **D** contradicts §5.6's entire premise, including the point that an outer filter is the one most easily bypassed (§5.2). |
+| 11 | **C** | The tool result's untrusted status was not carried through summarisation, so an unverified claim became an asserted fact with no gate on the resulting action — all three defects in §6's table trace back to this. **A** invents a hallucination where the content genuinely existed in the notes. **B** misclassifies an indirect (tool-result) injection as direct. **D** is not part of the scenario as given. |
+| 12 | **D** | Because instructions and data share one channel with no hard boundary, no single control eliminates injection — the lesson's stated central thesis, and the reason the whole lesson is about layered risk management rather than a fix. **A** contradicts M5-L05's own finding that a boundary helps with confusion but not compliance. **B** is false — §6 is built entirely around an indirect case, and direct injection is not "easily prevented" either. **C** repeats the mistake Q4/Q5 already ruled out. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming what the stack covers** — a keyword filter catches
+unobfuscated direct attempts, and a canary catches system-prompt leakage specifically; **naming a class it
+misses** — any indirect or stored injection whose payload is even lightly obfuscated or reworded, and any
+harmful action (like a data change or an approval) that never touches the canary at all, per Goal B in
+§7.2; **the concrete gap** — the colleague's stack has no defense against a tool-result-borne instruction
+that gets folded into a summary and reactivated turns later, and no control at all on the action itself;
+**the one layer to insist on first** — a gate on irreversible or high-value actions (M5-L08), independent
+of how the model was persuaded to propose them, because it is the layer that still holds when every
+upstream control has failed; and **framing it as risk management, not closure** — stating plainly that no
+combination of these layers makes the system immune, only bounds the damage. An answer that only says
+"add more filters" without naming the action-gate layer scores 2.
+
+---
+
+<a id="m5-l14"></a>
+## M5-L14 — Refusals, Errors and Fallback Behaviour
+
+**Answers: C · A · D · B · A · C · D · B · C · A · B · D**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **C** | The two flagged samples were about billing and HR policy — genuinely legitimate content that happened to use "unable to," which is also a refusal marker. **A** invents a bug that is not present; the detector matched exactly as coded. **B** describes the opposite of what happened. **D** is not true of the samples as given. |
+| 2 | **A** | An empty response and an infra error are their own failure classes, needing their own checks — neither is "the model refused." **B** collapses distinctions the lesson exists to keep separate. **C** misclassifies both as refusals, which they structurally are not. **D** confuses this with M5-L07's schema-validation failures, a different surface entirely. |
+| 3 | **D** | A refusal is close to the model's stable, repeatable answer, so an identical re-ask mostly reproduces it; a timeout is closer to noise around an otherwise-reachable right answer, so retrying resolves it. **A** invents a fault in the wrong component. **B** is not established anywhere in the lesson. **C** dismisses a clean, exact table the lab computed. |
+| 4 | **B** | Change something material — the prompt, the context, the offered alternative — or escalate; repeating the identical request mostly just re-spends budget for the same ~3%/attempt return. **A** and **D** apply M2-L14's transient-failure playbook to a failure §5.2 shows does not behave like one. **C** doubles down on a strategy the lab's own numbers argue against. |
+| 5 | **A** | Short-circuiting locally after the trip is exactly what turned 18,000 wasted attempts into 8 in §7.3. **B** would make an outage's cost worse, not better. **C** describes a different technique (caching) not discussed here. **D** overstates the mechanism — users still get a fallback response, not a block. |
+| 6 | **C** | Every one of the 6,000 users got a response in both scenarios in §7.3; the breaker changed where it came from and how fast, not whether it arrived. **A**, **B** and **D** all misread a lab result that explicitly states this. |
+| 7 | **D** | The detector missed a real refusal with no marker phrase and flagged legitimate content sharing the same words — errors in both directions, the same shape M5-L13 found for injection filters. **A**, **B** and **C** name limitations the lab's actual detector does not have (it is pure string matching, language-agnostic within its own logic, and fast). |
+| 8 | **B** | It is a parallel classification for a different surface — what came back from the model or the transport, prior to and separate from whether output validates a schema. **A** and **C** collapse two genuinely different questions into one. **D** is not correct; refusals and infra errors can occur with no repair loop involved at all, e.g. on the very first attempt. |
+| 9 | **C** | "I don't have the ability to browse the internet" contains none of the detector's listed phrases, despite being a functional refusal — exactly the false-negative §7.1 reports. **A** contradicts the stated ground truth. **B** overclaims a limit specific to this detector as a limit of all methods. **D** is factually wrong about the sample. |
+| 10 | **A** | A half-open breaker sends a limited probe to test recovery before committing to full traffic again — the state that makes recovery detection safe rather than all-or-nothing. **B** skips the caution half-open exists to provide. **C** describes a breaker that never recovers automatically, which is not the pattern described. **D** denies that recovery is possible at all. |
+| 11 | **B** | Most of a refusal-retry budget buys almost no additional chance of success, because the outcome is close to a fixed decision rather than noise — exactly §7.2's 14%-after-5-attempts result. **A** invents a pricing difference the lesson does not claim. **C** is the opposite of what makes a timeout worth retrying. **D** invents an unrelated budget with no basis in the lesson. |
+| 12 | **D** | Match the response to the failure class — the lesson's single organizing idea, restated. **A** is the exact mistake §6's incident made. **B** overgeneralises a case-by-case judgement (§5.4) into an absolute. **C** contradicts §7.3's entire result. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming the three classes** — infrastructure error, policy
+refusal (or capability limit), and a sustained outage all currently collapse into one message; **the
+concrete harm for each** — infra errors get a lucky-but-unexplained retry, refusals get repeated
+identically for a near-zero return while the user concludes the bot is broken, and a real outage turns
+into a retry storm that extends its visible impact past its actual duration; **prioritising one fix** — a
+reasoned choice of which to fix first (commonly the circuit breaker, since an unbounded outage has the
+largest blast radius, or refusal handling, since it directly damages user trust); **grounding the choice
+in a number** — reference to a concrete measure such as §7.2's or §7.3's rates rather than a general
+impression; and **not proposing one new generic message to replace the old one** — recognising that the
+fix is classification into at least three paths, not a better single sentence. An answer that proposes
+only "write better error messages" without classifying the failures first scores 2.
+
+---
+
+<a id="m5-l15"></a>
+## M5-L15 — Token Accounting and Cost Calculation
+
+**Answers: B · D · A · C · D · B · C · A · C · B · A · D**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **B** | Below the break-even ratio, output dominates cost regardless of which block looks longer — §7.1's own example is a 2,000-token prompt with a 400-token answer already at 44% output cost. **A** and **D** contradict the entire point of the section. **C** invents a rule with no basis. |
+| 2 | **D** | The cached region must be byte-identical to a prior request; anything variable placed before it — a timestamp, a request id — means it never matches, so every request misses. **A**, **B** and **C** name conditions that do not affect prefix matching at all. |
+| 3 | **A** | A blended rate is exact only for the input:output shape it was computed from — zero error there is definitional, not lucky. **B** contradicts §7.3's own table, which shows +49% and −57% errors on the other two rows. **C** and **D** invent conditions the lesson does not establish. |
+| 4 | **C** | Averaging a cheap input price and an expensive output price into one number necessarily overprices input-heavy work and underprices output-heavy work — the mechanism, not a coincidence. **A** invents a tokenizer inconsistency that does not exist. **B** is not how any pricing described here works. **D** dismisses an exact, reproducible calculation as noise. |
+| 5 | **D** | A small share of long, expensive requests that a short-conversation sample structurally cannot contain — measured at a 4.8× underestimate, with the top 10% of traffic driving most of the gap. **A**, **B** and **C** invent causes the scenario does not involve. |
+| 6 | **B** | Later requests pay the discount rate on the cached portion instead of full input price — the entire mechanism. **A** confuses input caching with output token count, which caching does not touch. **C** overstates; the prefix is still sent, just priced differently. **D** is not how token pricing works in either direction. |
+| 7 | **C** | At exactly the break-even ratio the two halves cost the same; below it (relatively more output), output costs more — the definition given in §5.1. **A** and **D** invent rules about limiting or zeroing costs that are not implied by a break-even ratio. **B** conflates two unrelated mechanisms. |
+| 8 | **A** | It silently assumes one specific mix and is wrong, in opposite directions, for anything else — §7.3's exact result. **B** is false; the estimate undercharges output-heavy work in the same table. **C** is not true; it is pure arithmetic on token counts. **D** misdescribes what a blended rate covers. |
+| 9 | **C** | A miss simply reverts to full price with no distinct signal — that silence is exactly why it is dangerous. **A**, **B** and **D** invent detection or compensation mechanisms the lesson does not describe. |
+| 10 | **B** | Build the forecast from a sample that actually contains your long tail, not from short, hand-tested conversations. **A**, **C** and **D** are overreactions the lesson does not recommend — the fix is a better sample, not abandoning testing or rejecting long conversations outright. |
+| 11 | **A** | The cache must be written before it can be read from — there is no discount to apply on the very first occurrence of a prefix. **B**, **C** and **D** invent rules about timing or thresholds that are not part of the mechanism as described. |
+| 12 | **D** | Track input, output and cache-hit cost as three separate quantities — the synthesis of every section in the lesson. **A**, **B** and **C** each repeat a mistake the lesson spent a section correcting. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming the sample-size problem** — 20 manually-run
+conversations are very unlikely to contain the long-tail requests that dominate real cost, per §5.4's
+4.8× result; **naming the blended-rate problem** — a single $/token figure is only exact at the shape it
+was built from, and the 20-conversation sample may not even represent that shape correctly; **what to ask
+for instead** — a forecast built from logged production-shaped data (even a rough percentile bucketing,
+§5.4), or, absent that, treating the manual estimate explicitly as a floor rather than a plan; **a
+concrete next step** — instrumenting per-request cost logging now so that within a short window there is
+real data to forecast from; and **not rejecting budgeting outright** — the critique should improve the
+estimate, not argue that cost cannot be forecast at all. An answer that only says "that number seems too
+low" without naming the long-tail mechanism or proposing an alternative scores 2.
+
+---
+
+<a id="m5-l16"></a>
+## M5-L16 — Caching and Model Routing
+
+**Answers: A · C · D · B · C · A · D · B · A · D · B · C**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **A** | A higher hit rate is not a free upgrade — 50 of the extra 250 hits were wrong, and a wrong hit is worse than a miss because it delivers an incorrect answer with a cache's apparent confidence. **B** ignores the defect the same section measures. **C** overreaches; exact-match remains the safer choice wherever a wrong answer is costly. **D** is false — the wrong hits arose from correct, intended cache behaviour operating on genuinely similar-but-different queries. |
+| 2 | **C** | Neither a wrong semantic hit nor a misrouted request raises an error — both revert to something that looks like normal operation unless specifically instrumented for. **A** and **D** invent conditions not established anywhere in the lesson. **B** is false; correctly-routed and correctly-cached requests are cheaper, not more expensive, than doing nothing. |
+| 3 | **D** | Higher accuracy means fewer hard requests land on the cheap model and require a costly fallback, and fewer easy requests land on the expensive model and overpay — both effects reduce total cost as accuracy rises. **A** and **C** invent mechanisms unrelated to routing accuracy. **B** contradicts the lab's own prices, which never go to zero. |
+| 4 | **B** | Below 60.4% accuracy in this lab's specific setup, the routed total exceeds the always-expensive baseline — exactly what the table and the closed-form calculation both show. **A** misreads a cost threshold as a routing rule. **C** confuses two independent lab sections. **D** overgeneralises a result computed for one specific price and traffic mix into a universal constant. |
+| 5 | **C** | A misrouted hard request pays for the failed cheap attempt AND the expensive fallback that corrects it — double payment. A misrouted easy request just pays the (higher) expensive price once, for a correct answer. **A**, **B** and **D** invent billing rules not present in the model. |
+| 6 | **A** | A cache hit means no model call and no need for a routing decision at all — classifying first spends money on a decision that turns out to be irrelevant. **B**, **C** and **D** invent effects or rules the lesson does not establish; §7.3 measures a pure cost effect, not a latency-only one. |
+| 7 | **D** | A higher cache hit rate means more requests are, in the wrong order, classified before ever reaching a cache check that would have made classification unnecessary — so the waste scales up with hit rate, not down. **A** has the direction backwards. **B** and **C** describe changes unrelated to the mechanism being priced. |
+| 8 | **B** | The easy request still gets a correct answer — it simply cost more than the cheap model would have charged for the same correct answer. No fallback is needed because nothing failed. **A** and **C** invent a failure that did not occur. **D** contradicts the whole premise of an "expensive" tier costing more per token. |
+| 9 | **A** | The lesson explicitly flags this as a real, unmeasured quality risk on every hard request, not a cost figure — cheapness in dollars says nothing about correctness. **B** and **C** invent constraints not present. **D** confuses a strategy that ignores routing entirely with one that could violate a routing-specific calculation. |
+| 10 | **D** | Routing is a decision made before any model call, using accuracy computed in advance; M5-L14's material addresses what to do once a request has already failed or been refused. **A** and **C** deny any relationship the lesson explicitly draws. **B** is false — the application, not the model, makes the routing decision. |
+| 11 | **B** | The lesson's central, computed result: build a router only once its measured accuracy is confirmed to clear the specific break-even bar for your own prices and traffic. **A** is the mistake §6's incident makes explicitly. **C** and **D** are not claims the lesson supports — caching and routing are shown working together, and price is central to the whole analysis. |
+| 12 | **C** | An unmeasured ~55%-accurate classifier shipped below the system's own 60.4% break-even point, so misrouted hard requests' double-payment outweighed the savings on correctly-routed easy ones. **A**, **B** and **D** invent causes the scenario does not describe — the incident is entirely explained by §5.2's arithmetic once the real accuracy is known. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming the skipped assumption** — "even a rough classifier
+should save money" assumes routing is always net-positive, when §5.2 shows it has a specific break-even
+accuracy below which it is net-negative; **what to measure** — the classifier's actual accuracy on a
+held-out, representative set before shipping, not an assumption; **what to compute** — the break-even
+accuracy for the system's own real prices and easy/hard traffic mix, using the closed-form approach in
+§5.2; **the double-payment mechanism** — naming specifically that a misrouted hard request pays for both
+a failed cheap attempt and a corrective expensive call, which is what can flip routing from a saving into
+a loss; and **an ongoing check, not just a launch check** — accuracy and traffic mix can drift, so the
+break-even comparison should be monitored continuously (§6's fix), not computed once. An answer that only
+says "measure the accuracy" without connecting it to a specific break-even calculation scores 2.
+
+---
+
+<a id="m5-l17"></a>
+## M5-L17 — Provider Differences and Portability
+
+**Answers: C · B · A · D · B · C · A · D · C · B · D · A**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **C** | Bedrock nests the same Anthropic-shaped body inside its own envelope, so nothing at the top level matches by design; an OpenAI-style shape shares several top-level names but relocates the system prompt into the message list, a structural change. **A** is factually wrong. **B** contradicts the lab's own output. **D** invents randomness where the difference is a deliberate design choice each provider made. |
+| 2 | **B** | The inner request body is identical; only the wrapper and authentication differ — an envelope change. **A** overstates the effort involved. **C** collapses a genuinely different-sized problem into the same category. **D** ignores that the request shape itself is affected, even if billing is too. |
+| 3 | **A** | Common English and structured formats matched exactly; a rare word and non-Latin script diverged sharply — divergence tracks content, not a fixed ratio. **B** and **D** are not supported by anything in the lab and are not sound general claims. **C** directly contradicts the measured −32% gap. |
+| 4 | **D** | Every downstream calculation built on a token count — budgets, cost, context checks — is only valid for the tokenizer that produced it. **A** and **B** invent constraints unrelated to the mechanism. **C** is false; input tokens are equally tokenizer-dependent. |
+| 5 | **B** | Eight draws is too small a sample to reliably separate a 95%-quality process from an 80%-quality one — the same statistical result M5-L12 established generally, recurring here. **A** contradicts the stated, real 17-point gap. **C** invents an error that did not occur; the seeding is deterministic and correct. **D** overstates — golden suites can detect the gap, just not at this sample size. |
+| 6 | **C** | The averaged column exists precisely because a single run is not reliable evidence when comparing providers — run the suite at a size that can actually resolve the gap you care about. **A** narrows a general principle to one use case arbitrarily. **B** is the exact belief the section refutes. **D** contradicts the lab's own 17-point measured gap. |
+| 7 | **A** | The same words can land differently as instructions to different models, so a pass rate earned on one provider says nothing certain about another. **B** and **C** assert guarantees no provider makes. **D** narrows a general risk to one language with no basis. |
+| 8 | **D** | Re-run the identical golden suite, sized adequately, against the actual target provider — the direct, stated recommendation. **A** and **B** are the failure modes §6's worked example walks through. **C** asks the wrong party to grade its own homework. |
+| 9 | **C** | Centralising the provider-specific shape means a switch touches one layer, not every call site that builds a request. **A** and **B** overclaim what an adapter pattern does — it does not remove the need for testing or make providers behave identically. **D** describes a capability the pattern does not have; tokens still need separate re-counting (§5.2). |
+| 10 | **B** | Streaming event formats and authentication mechanics are explicitly named as not covered. **A** and **C** are exactly what the lab does cover, in sections 2 and 1 respectively. **D** is covered via M5-L12's cross-reference, not excluded. |
+| 11 | **D** | Verify format, tokens, and quality against the real target provider — the lesson's throughline across all three lab sections. **A** and **B** each skip verification the lesson insists on. **C** overreacts; the lesson's message is "verify," not "avoid." |
+| 12 | **A** | The label flags that specific field names may be stale; the structural distinction (envelope vs structural change) is the part meant to transfer and does not depend on any single provider's current field names. **B** and **C** overreact to a caveat as if it invalidated the whole section. **D** confuses "the code ran" with "the shapes are confirmed accurate against live documentation," which are different claims. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming the specific risk** — a small manual spot-check has
+a real, demonstrated chance of showing no difference even when a substantial quality gap exists, per
+§7.3's identical 7/8 result for two providers that were 17 points apart; **connecting it to the lab** —
+citing the single-draw-vs-averaged comparison specifically, not just a general "testing is good"
+statement; **what to insist on instead** — running the existing golden suite (M5-L12) against the new
+provider at a sample size sized to detect the quality gap that matters for this system, before switching
+in production; **naming a second dimension** — token counts and cost estimates also need re-verification
+against the new provider's tokenizer, not just quality (§5.2); and **not blocking the switch outright** —
+the answer should support making the change once properly verified, not argue against switching providers
+in general. An answer that only says "we should test more" without naming the sample-size mechanism
+scores 2.
+
+---
+
+<a id="m5-l18"></a>
+## M5-L18 — Building an Evaluation Dataset You Can Trust
+
+**Answers: D · A · C · B · A · D · B · C · D · A · C · B**
+
+| Q | Ans | Why, and why the distractors fail |
+|---|---|---|
+| 1 | **D** | Every patch genuinely fixed the specific example in front of it — the gap opened from the process, not from any single dishonest or careless step. **A** and **B** invent a fault that did not occur. **C** contradicts the lab's own setup, where the generalisation rate was 20%, not zero, and still produced a large gap. |
+| 2 | **A** | No gradient touched the data, yet the same-set-guides-and-reports pattern is the same family of failure M1-L09 named for training — a leakage variant specific to how prompts get iterated. **B** dismisses a documented, general mechanism as a coding error. **C** overstates the parallel; there is no gradient step here. **D** is false; the mechanism applies equally to hand-written or logged eval data. |
+| 3 | **C** | §7.2 asks how precisely a single measurement reflects the truth, a distinct question from M5-L12's "how many samples to detect a known gap between two conditions." **A**, **B** and **D** name topics from other lessons, not the question this section poses. |
+| 4 | **B** | The lab's own computed interval at N=10 spans roughly 63% to 100% — wide enough that the point estimate alone supports almost no decision. **A** denies that sampling has any uncertainty. **C** describes the interval at N≈1,000, not N=10. **D** does not match the formula or the lab's output. |
+| 5 | **A** | `(1-0.02)^100 ≈ 13.3%`, computed exactly in the lab — a real, non-trivial chance of zero coverage. **B** and **C** are absolutes the binomial formula does not support. **D** confuses the case type's traffic share with the probability of it being entirely absent from a sample, which are different quantities. |
+| 6 | **D** | Deliberately including a stated minimum count per case type guarantees coverage by design; the lab explicitly contrasts this with hoping a larger random sample happens to include it. **A** is the approach the section shows is still insufficient at realistic sizes. **B** and **C** are not proposed anywhere in the lesson and would remove exactly the coverage the section argues for. |
+| 7 | **B** | A regression suite is deliberately, repeatedly iterated against (M5-L12) and is typically far too small to either report a precise quality figure or guarantee rare-case coverage — both problems this lesson names directly. **A**, **C** and **D** state constraints that are not true of regression suites. |
+| 8 | **C** | Nothing about the process looked wrong at any step — that is precisely what makes it dangerous compared to an obvious bad-faith shortcut, which would be easier to catch. **A**, **B** and **D** invent conditions unrelated to the mechanism described. |
+| 9 | **D** | One section addresses precision of a single average measurement; the other addresses whether the right cases were measured at all — genuinely separate concerns, both necessary. **A** collapses them into one. **B** and **C** narrow the sections' scope to topics they do not actually restrict themselves to. |
+| 10 | **A** | The lesson explicitly frames LLM-as-judge as previewed here, with the full treatment of its agreement-with-humans problem deferred to M13-L13. **B**, **C** and **D** all overstate a claim the lesson deliberately avoids making. |
+| 11 | **C** | Every section demonstrates that a number's trustworthiness depends on the process that produced it — how it was sampled, sized, and whether it was contaminated — not merely that a number exists. **A**, **B** and **D** are absolutes the lesson does not support; in particular, a golden suite (M5-L12) is explicitly shown to be an unreliable source of a quality claim. |
+| 12 | **B** | Iterating against a set for regression purposes is the exact mechanism §7.1 shows inflates that same set's own reported pass rate — using it for both purposes at once compounds the two roles' conflicting demands. **A**, **C** and **D** state constraints not established anywhere in the lesson. |
+
+**Q13 rubric (5 marks).** One mark each for: **naming the mechanism** — a 12-example set iterated against
+until every example passes is contaminated in the specific sense §7.1 demonstrates, not a lie, but a
+number that no longer measures quality; **noting the missing precision** — even an honest 12-example
+measurement carries a very wide confidence interval (§5.2), far too imprecise for a launch decision on its
+own; **noting the missing coverage** — 12 hand-written examples are extremely unlikely to include rare,
+high-stakes case types, which a stratified design would need to guarantee deliberately (§5.3); **what to
+build instead** — a genuine, versioned holdout, sized for the decision's required precision, stratified
+for known critical categories, never used to guide prompt changes; and **not dismissing the 12-example set
+entirely** — it remains useful as a regression suite (M5-L12), just not as the source of a quality claim.
+An answer that only says "12 examples is too few" without naming the contamination mechanism specifically
+scores 2.
+
+---
+
+*All 18 Module 5 lessons (M5-L01 through M5-L18) are answered above.*

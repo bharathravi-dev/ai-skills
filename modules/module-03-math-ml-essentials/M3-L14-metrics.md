@@ -12,7 +12,7 @@
 > **This lesson is the one you will use most often, and for the longest.**
 > You will stop computing gradients by hand within a month. You will be arguing about precision and
 > recall for the rest of your career — including for RAG (M7-L16), agents (M8-L15) and LLM evaluation
-> (M5-L15), none of which have a loss function but all of which have exactly these trade-offs.
+> (M5-L18), none of which have a loss function but all of which have exactly these trade-offs.
 
 ---
 
